@@ -1,0 +1,75 @@
+main.py
+
+from fastapi import FastAPI, Depends, status
+from schemas import Messages
+import models
+from database import engine, get_db
+from sqlalchemy.orm import Session
+
+models.Base.metadata.create_all(bind=engine)
+
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
+@app.post("/mensagens/", status_code=status.HTTP_201_CREATED)
+def criar_mensagem(nova_mensagem: Messages, db_session: Session = Depends(get_db)):
+    mensagem_criada = models.Model_Message(**nova_mensagem.model_dump())
+    db_session.add(mensagem_criada)
+    db_session.commit()
+    db_session.refresh(mensagem_criada)
+    return {"Mensagem": mensagem_criada}
+
+schemas.py
+
+from pydantic import BaseModel
+
+class Messages(BaseModel):
+    title: str
+    content: str
+    published: bool = True
+
+models.py
+
+from sqlalchemy import Column, Integer, String, Boolean, TIMESTAMP
+from sqlalchemy.sql import text
+from database import Base
+
+class Model_Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(String, nullable=False)
+    published = Column(Boolean, server_default='True', nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+
+database.py
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+from dotenv import load_dotenv  
+import os
+
+load_dotenv()
+
+user = os.getenv("DB_USER")
+password = os.getenv("DB_PASSWORD")
+database = os.getenv("DB_NAME")
+host = os.getenv("DB_HOST")
+port = os.getenv("DB_PORT")
+
+SQLALCHEMY_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
